@@ -1,2 +1,3 @@
-# pcloudgo
+# pcloud
+
 pcloud client in golang
