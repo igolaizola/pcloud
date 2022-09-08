@@ -6,14 +6,16 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/igolaizola/pcloud"
+	"github.com/igolaizola/pcloud/pkg/cli"
 )
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	if err := pcloud.Do(ctx); err != nil {
+	// Launch command
+	cmd := cli.NewCommand()
+	if err := cmd.ParseAndRun(ctx, os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
 }
