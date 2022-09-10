@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	aesecb "github.com/andreburgaud/crypt2go/ecb"
 	"golang.org/x/crypto/pbkdf2"
@@ -336,12 +335,6 @@ func EncryptSector(rnd io.Reader, aesKey, hmacKey, plain []byte, index int) ([]b
 		fromMix = append(lastBlock, last...)
 	}
 	cipheredData := append(fromCBC, fromMix...)
-
-	// If the file doesn't exist, create it, or append to the file
-	f, _ := os.OpenFile("debug.jpg", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	f.Write(plain)
-	f.Close()
-
 	return cipheredData, cipheredAuth, nil
 }
 
