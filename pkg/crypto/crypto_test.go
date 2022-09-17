@@ -7,7 +7,9 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
+	"fmt"
 	"io"
+	"io/ioutil"
 	mrand "math/rand"
 	"testing"
 )
@@ -139,8 +141,7 @@ func TestEncryptFile(t *testing.T) {
 			size: 4096 * 128 * 2,
 			wants: []string{
 				"33783f4497e9f87864b6ea4c8b8488e456101891751fab51d66b1d11c67d54b2",
-				"04ef2bbee180a601b2684811aacef996dcd826c61149ed59f42bc4364a63c8f0",
-				"fcaf21462a2f8d81da6f4ccc991bf1ba369cb017b821ddd0871e78daeac9bd03",
+				"a91d66de59bcb98236eba2e1eef38c9e101a1e6284270d4df200cd6faa09e5b6",
 			},
 			wantSize: 1056864,
 		},
@@ -154,15 +155,14 @@ func TestEncryptFile(t *testing.T) {
 			if _, err := io.ReadFull(rnd, input); err != nil {
 				t.Fatal(err)
 			}
+			_ = ioutil.WriteFile(fmt.Sprintf("../../data/%d/%d.txt", test.size, test.size), input, 0644)
 			aesKey, hmacKey, err := GenerateKey(rnd)
 			if err != nil {
 				t.Fatal(err)
 			}
 			buf := make([]byte, EncryptBufferSize)
-			reader, err := Encrypt(rnd, aesKey, hmacKey, bytes.NewReader(input))
-			if err != nil {
-				t.Fatal(err)
-			}
+			reader := Encrypt(rnd, aesKey, hmacKey, bytes.NewReader(input), len(input))
+
 			i := 0
 			gotSize := 0
 			for {
@@ -177,8 +177,10 @@ func TestEncryptFile(t *testing.T) {
 				if i >= len(test.wants) {
 					t.Fatalf("got more data than expected: %d", i+1)
 				}
+
 				want := fromHex(test.wants[i])
 				got := sha256.Sum256(buf[:n])
+
 				if !bytes.Equal(got[:], want) {
 					t.Errorf("got: %x\nwant: %x\n", got, want)
 				}

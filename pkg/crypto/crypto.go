@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 
 	aesecb "github.com/andreburgaud/crypt2go/ecb"
 	"golang.org/x/crypto/pbkdf2"
@@ -217,51 +218,76 @@ func DecryptData(aesKey, hmacKey []byte, cipheredData, cipheredAuth []byte, inde
 	return output, nil
 }
 
-const EncryptBufferSize = 4096 * 129
+const EncryptBufferSize = 4096 * 130
 
-func Encrypt(rnd io.Reader, aesKey, hmacKey []byte, input io.Reader) (io.Reader, error) {
-	size := 4096 * 128
-	buf := make([]byte, size)
+func Encrypt(rnd io.Reader, aesKey, hmacKey []byte, input io.Reader, size int) io.Reader {
+	rd, wr := io.Pipe()
+	go func() {
+		if err := encrypt(rnd, aesKey, hmacKey, input, size, wr); err != nil {
+			wr.CloseWithError(err)
+			return
+		}
+		_ = wr.Close()
+	}()
+	return rd
+}
+
+func encrypt(rnd io.Reader, aesKey, hmacKey []byte, input io.Reader, size int, wr io.Writer) error {
+	buf := make([]byte, 4096*128)
 	i := 0
-	wr := bytes.Buffer{}
-	var auth []byte
+
+	authLevel := 1
+	t := int(math.Trunc((float64(size) + 4096 - 1) / 4096))
+	t = int(math.Trunc((float64(t) + 128 - 1) / 128))
+	for t > 1 {
+		t = int(math.Trunc((float64(t) + 128 - 1) / 128))
+		authLevel++
+	}
+
+	sectors := int(math.Ceil(float64(size-32) / float64(4096*128)))
+
+	auth := make([][]byte, 7)
+	authcnt := make([]int, 7)
 	var blockData, blockAuth []byte
 	for {
 		n, err := input.Read(buf)
 		if errors.Is(err, io.EOF) {
 			break
 		}
-		if len(blockData) > 0 {
-			if _, err := wr.Write(append(blockData, blockAuth...)); err != nil {
-				return nil, fmt.Errorf("pcloud: couldn't write to pipe: %w", err)
-			}
-		}
 		if err != nil {
-			return nil, fmt.Errorf("pcloud: couldn't read file: %w", err)
+			return fmt.Errorf("pcloud: couldn't read file: %w", err)
 		}
 		curr := make([]byte, n)
 		copy(curr, buf[:n])
 		blockData, blockAuth, err = EncryptBlock(rnd, aesKey, hmacKey, curr, i)
 		if err != nil {
-			return nil, err
+			return err
+		}
+		blockData = append(blockData, blockAuth...)
+		signed := sign(aesKey, hmacKey, blockAuth)
+		auth[0] = append(auth[0], signed...)
+		authcnt[0]++
+
+		if size > 4096 {
+			for j := 0; j < authLevel; j++ {
+				if authcnt[j] == 128 || (i == sectors-1 && authcnt[j] > 0) {
+					new := make([]byte, len(auth[j]))
+					copy(new, auth[j])
+					blockData = append(blockData, new...)
+					signed := sign(aesKey, hmacKey, auth[j])
+					auth[j+1] = append(auth[j+1], signed...)
+					authcnt[j+1]++
+					auth[j] = nil
+					authcnt[j] = 0
+				}
+			}
+		}
+		if wr.Write(blockData); err != nil {
+			return fmt.Errorf("pcloud: couldn't write to pipe: %w", err)
 		}
 		i++
-		if len(blockAuth) == 32 && i == 1 {
-			continue
-		}
-		signed := sign(aesKey, hmacKey, blockAuth)
-		auth = append(auth, signed...)
-
 	}
-	var signed []byte
-	if len(auth) > 32 {
-		signed = sign(aesKey, hmacKey, auth)
-		auth = append(auth, signed...)
-	}
-	if _, err := wr.Write(append(append(blockData, blockAuth...), auth...)); err != nil {
-		return nil, fmt.Errorf("pcloud: couldn't write to pipe: %w", err)
-	}
-	return bytes.NewReader(wr.Bytes()), nil
+	return nil
 }
 
 func EncryptBlock(rnd io.Reader, aesKey, hmacKey, plain []byte, index int) ([]byte, []byte, error) {

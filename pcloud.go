@@ -244,6 +244,7 @@ func (c *Client) UploadFile(ctx context.Context, src, dst string) error {
 		return fmt.Errorf("pcloud: couldn't stat file: %w", err)
 	}
 	mtime := fileInfo.ModTime().Unix()
+	size := fileInfo.Size()
 
 	// Read file
 	file, err := os.Open(src)
@@ -273,11 +274,7 @@ func (c *Client) UploadFile(ctx context.Context, src, dst string) error {
 		if err != nil {
 			return fmt.Errorf("pcloud: couldn't encrypt key: %w", err)
 		}
-		enc, err := crypto.Encrypt(rand.Reader, fileAesKey, fileHmacKey, reader)
-		if err != nil {
-			return fmt.Errorf("pcloud: couldn't encrypt file: %w", err)
-		}
-		reader = enc
+		reader = crypto.Encrypt(rand.Reader, fileAesKey, fileHmacKey, reader, int(size))
 
 		// Encrypt file name using folder key
 		folderAesKey, folderHmacKey, err := crypto.DecryptKey(c.priv, folder.Key)
@@ -297,8 +294,7 @@ func (c *Client) UploadFile(ctx context.Context, src, dst string) error {
 	}
 
 	// Upload data in chunks
-	size := crypto.EncryptBufferSize
-	buf := make([]byte, size)
+	buf := make([]byte, crypto.EncryptBufferSize)
 	var i, offset int
 	for {
 		n, err := reader.Read(buf[:])

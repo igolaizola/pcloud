@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/igolaizola/pcloud"
+	"github.com/igolaizola/pcloud/pkg/integration"
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
 )
@@ -24,6 +25,7 @@ func NewCommand() *ffcli.Command {
 			newExportCommand(),
 			newListCommand(),
 			newUploadCommand(),
+			newTestDataCommand(),
 		},
 	}
 }
@@ -190,5 +192,25 @@ func clientWithOptions(fs *flag.FlagSet, hasToken, hasKey bool) func(context.Con
 		}
 		cli := pcloud.New(*endpoint, opts...)
 		return cli, cli.Start(ctx)
+	}
+}
+
+func newTestDataCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("test-data", flag.ExitOnError)
+	_ = fs.String("config", "", "config file (optional)")
+
+	return &ffcli.Command{
+		Name:       "test",
+		ShortUsage: "pcloud test-data [flags] <key> <value data...>",
+		Options: []ff.Option{
+			ff.WithConfigFileFlag("config"),
+			ff.WithConfigFileParser(ff.PlainParser),
+			ff.WithEnvVarPrefix("PCLOUD"),
+		},
+		ShortHelp: "pcloud test-data",
+		FlagSet:   fs,
+		Exec: func(ctx context.Context, args []string) error {
+			return integration.Run(ctx)
+		},
 	}
 }
