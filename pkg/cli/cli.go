@@ -43,7 +43,7 @@ func newExportCommand() *ffcli.Command {
 			ff.WithConfigFileParser(ff.PlainParser),
 			ff.WithEnvVarPrefix("PCLOUD"),
 		},
-		ShortHelp: "pcloud ls",
+		ShortHelp: "pcloud export",
 		FlagSet:   fs,
 		Exec: func(ctx context.Context, args []string) error {
 			if *keyFile == "" {
