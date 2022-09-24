@@ -108,6 +108,13 @@ func TestEncryptFile(t *testing.T) {
 		wants    []string
 		wantSize int
 	}{
+		"tiny": {
+			size: 5,
+			wants: []string{
+				"6572da4abaf952a875d8dd16ece280b1c00cf9429c4aa9b7d5e68c685eacb598",
+			},
+			wantSize: 37,
+		},
 		"very small": {
 			size: 250,
 			wants: []string{

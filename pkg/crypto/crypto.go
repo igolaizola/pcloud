@@ -317,6 +317,7 @@ func EncryptSector(rnd io.Reader, aesKey, hmacKey, plain []byte, index int) ([]b
 	if _, err := io.ReadFull(rnd, rndBytes); err != nil {
 		return nil, nil, fmt.Errorf("pcloud: couldn't read random bytes: %w", err)
 	}
+
 	forHMAC := append(plain, uint64toBytes(uint64(index))...)
 	forHMAC = append(forHMAC, rndBytes...)
 	h := hmac.New(sha512.New, hmacKey)
@@ -324,16 +325,29 @@ func EncryptSector(rnd io.Reader, aesKey, hmacKey, plain []byte, index int) ([]b
 		return nil, nil, fmt.Errorf("pcloud: couldn't write to hmac: %w", err)
 	}
 	iv := h.Sum(nil)[:16]
+
+	if len(plain) < 16 {
+		cipheredData := make([]byte, len(plain))
+		copy(cipheredData, rndBytes[:len(plain)])
+		forXOR := make([]byte, 16)
+		copy(forXOR, xor(rndBytes, plain))
+		copy(forXOR[len(plain):], rndBytes[len(plain):])
+
+		auth := make([]byte, 32)
+		copy(auth, forXOR[:8])
+		copy(auth[8:], iv)
+		copy(auth[24:], forXOR[8:])
+		cipheredAuth := encryptAESECB(auth, aesKey)[:32]
+
+		return cipheredData, cipheredAuth, nil
+	}
+
 	auth := make([]byte, 32)
 	copy(auth, rndBytes[:8])
 	copy(auth[8:], iv)
 	copy(auth[24:], rndBytes[8:])
+
 	cipheredAuth := encryptAESECB(auth, aesKey)[:32]
-
-	if len(plain) < 16 {
-		return nil, nil, fmt.Errorf("pcloud: unimplemented: %d", len(plain))
-	}
-
 	md16 := len(plain) % 16
 	n := len(plain)
 	if md16 > 0 {

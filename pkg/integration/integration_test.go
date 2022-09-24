@@ -44,7 +44,7 @@ func TestFile(t *testing.T) {
 			break
 		}
 		wants = append(wants, want)
-		rnds = append(rnds, toRandom(aesKey, want, 4096*128))
+		rnds = append(rnds, toRandom(aesKey, want))
 		i++
 	}
 	rnd := io.MultiReader(rnds...)
@@ -87,12 +87,30 @@ func testBlock(t *testing.T, index int, reader io.Reader, want []byte) {
 	}
 }
 
-func toRandom(aesKey, enc []byte, offset int) io.Reader {
+func toRandom(aesKey, enc []byte) io.Reader {
+	var offset int
+	switch {
+	case len(enc) > 4096*128:
+		offset = 4096 * 128
+	case len(enc) > 4096:
+		offset = len(enc) - 64
+	case len(enc) > 32+16:
+		offset = len(enc) - 32
+	default:
+		data := make([]byte, len(enc)-32)
+		copy(data, enc[:len(enc)-32])
+		curr := crypto.DecryptRandom(aesKey, enc[len(enc)-32:])
+		data = append(data, curr[len(enc)-32:]...)
+		return bytes.NewReader(data)
+	}
 	var data []byte
 	for i := 0; i < 128; i++ {
 		curr := crypto.DecryptRandom(aesKey, enc[offset:offset+32])
 		data = append(data, curr...)
 		offset += 32
+		if offset+32 >= len(enc) {
+			break
+		}
 	}
 	return bytes.NewBuffer(data)
 }
